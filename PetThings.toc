@@ -1,0 +1,8 @@
+## Interface: 16001
+## Title: PetThings
+## Notes: Hunter pet management addon: customizable Buffs & Debuffs frames, Happiness Feed Reminder, Minimap button, and per-character settings.
+## Author: Antigravity
+## Version: 1.0.0
+## SavedVariablesPerCharacter: PetThingsDB
+
+PetThings.lua

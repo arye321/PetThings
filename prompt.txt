@@ -1,0 +1,18 @@
+make an addon for the game WoW Forver (a new wow beta, similar api to WoW Midnight i think, make sure) interface 16001 . 
+
+addon name is PetThings
+
+the addon will help you manage your hunter pet.
+
+the addon has a minimap button and options window.
+
+left clicking the minimap button opens options.
+
+
+Theres a frame that shows pets buffs and a frame for debuffs, the size of the icons are resizeable in the options
+the buff frames are movable
+
+
+when pet is not happy, shows a moveable frame that reminds to feed it.
+
+settings should be saved per character.

@@ -23,6 +23,8 @@ local DEFAULT_CONFIG = {
         perRow = 8,
         growth = "RIGHT", -- "RIGHT", "LEFT", "UP", "DOWN"
         showDuration = true,
+        showCooldownSpiral = true,
+        showCooldownNumbers = false,
         showCount = true,
         point = "CENTER",
         x = -150,
@@ -35,6 +37,8 @@ local DEFAULT_CONFIG = {
         perRow = 8,
         growth = "RIGHT",
         showDuration = true,
+        showCooldownSpiral = true,
+        showCooldownNumbers = false,
         showCount = true,
         point = "CENTER",
         x = -150,
@@ -338,7 +342,10 @@ local function CreateAuraContainer(anchor, filter, dbKey)
     function container:Refresh()
         local cfg = PetThingsDB[self.dbKey]
         if not cfg.enabled then
-            for _, btn in pairs(self.buttons) do btn:Hide() end
+            for _, btn in pairs(self.buttons) do
+                btn:Hide()
+                if btn.duration then btn.duration:SetText("") end
+            end
             return
         end
 
@@ -346,7 +353,10 @@ local function CreateAuraContainer(anchor, filter, dbKey)
         local isTest = PetThingsDB.testMode
 
         if not isPetActive and not isTest then
-            for _, btn in pairs(self.buttons) do btn:Hide() end
+            for _, btn in pairs(self.buttons) do
+                btn:Hide()
+                if btn.duration then btn.duration:SetText("") end
+            end
             return
         end
 
@@ -375,10 +385,25 @@ local function CreateAuraContainer(anchor, filter, dbKey)
 
                 btn.count:SetText(i > 1 and tostring(i) or "")
                 btn.duration:SetText(cfg.showDuration and (i * 15 .. "s") or "")
+
+                if cfg.showCooldownSpiral ~= false then
+                    if btn.cooldown then
+                        btn.cooldown:SetCooldown(GetTime() - (i * 5), 60)
+                        if btn.cooldown.SetHideCountdownNumbers then
+                            btn.cooldown:SetHideCountdownNumbers(not cfg.showCooldownNumbers)
+                        end
+                        btn.cooldown.noCooldownCount = not cfg.showCooldownNumbers
+                        btn.cooldown:Show()
+                    end
+                else
+                    if btn.cooldown then btn.cooldown:Hide() end
+                end
+
                 btn:Show()
             end
             for i = dummyCount + 1, #self.buttons do
                 self.buttons[i]:Hide()
+                if self.buttons[i].duration then self.buttons[i].duration:SetText("") end
             end
             return
         end
@@ -402,14 +427,25 @@ local function CreateAuraContainer(anchor, filter, dbKey)
             end
 
             if duration and duration > 0 and expirationTime and expirationTime > 0 then
-                if btn.cooldown then
-                    btn.cooldown:SetCooldown(expirationTime - duration, duration)
-                    btn.cooldown:Show()
+                if cfg.showCooldownSpiral ~= false then
+                    if btn.cooldown then
+                        btn.cooldown:SetCooldown(expirationTime - duration, duration)
+                        if btn.cooldown.SetHideCountdownNumbers then
+                            btn.cooldown:SetHideCountdownNumbers(not cfg.showCooldownNumbers)
+                        end
+                        btn.cooldown.noCooldownCount = not cfg.showCooldownNumbers
+                        btn.cooldown:Show()
+                    end
+                else
+                    if btn.cooldown then btn.cooldown:Hide() end
                 end
                 btn.expirationTime = expirationTime
             else
                 if btn.cooldown then btn.cooldown:Hide() end
                 btn.expirationTime = nil
+            end
+
+            if not cfg.showDuration then
                 btn.duration:SetText("")
             end
 
@@ -427,6 +463,7 @@ local function CreateAuraContainer(anchor, filter, dbKey)
 
         for i = btnIndex, #self.buttons do
             self.buttons[i]:Hide()
+            if self.buttons[i].duration then self.buttons[i].duration:SetText("") end
         end
     end
 
@@ -444,12 +481,14 @@ local function AurasOnUpdate(self, elapsed)
 
     local now = GetTime()
     local function UpdateDurations(container, cfg)
-        if not cfg.enabled or not cfg.showDuration or PetThingsDB.testMode then return end
+        if not cfg.enabled or PetThingsDB.testMode then return end
         for _, btn in ipairs(container.buttons) do
-            if btn:IsShown() and btn.expirationTime and btn.expirationTime > now then
-                btn.duration:SetText(FormatTime(btn.expirationTime - now))
-            elseif btn:IsShown() and btn.expirationTime then
-                btn.duration:SetText("")
+            if btn:IsShown() then
+                if cfg.showDuration and btn.expirationTime and btn.expirationTime > now then
+                    btn.duration:SetText(FormatTime(btn.expirationTime - now))
+                else
+                    btn.duration:SetText("")
+                end
             end
         end
     end
@@ -680,13 +719,16 @@ end)
 -- 7. Standalone Options GUI
 -- =========================================================================
 local OptionsFrame = CreateBackdropFrame("Frame", "PetThingsOptionsFrame", UIParent)
-OptionsFrame:SetSize(420, 560)
+OptionsFrame:SetSize(440, 630)
 OptionsFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 OptionsFrame:SetMovable(true)
 OptionsFrame:EnableMouse(true)
 OptionsFrame:SetClampedToScreen(true)
 OptionsFrame:SetFrameStrata("HIGH")
 OptionsFrame:Hide()
+
+-- Register in UISpecialFrames so pressing ESC closes the Options window
+tinsert(UISpecialFrames, "PetThingsOptionsFrame")
 
 ApplyStandardBackdrop(OptionsFrame, 0.08, 0.08, 0.12, 0.95, 0.2, 0.6, 0.9, 1.0)
 
@@ -733,7 +775,7 @@ end
 
 local function CreateUISlider(parent, label, minVal, maxVal, step, getVal, setVal)
     local slider = CreateFrame("Slider", nil, parent, "OptionsSliderTemplate")
-    slider:SetWidth(170)
+    slider:SetWidth(180)
     slider:SetHeight(16)
     slider:SetMinMaxValues(minVal, maxVal)
     slider:SetValueStep(step)
@@ -782,7 +824,7 @@ end
 local uiWidgets = {}
 
 -- 1. General Section
-CreateSectionHeader(OptionsFrame, "General Settings", -40)
+CreateSectionHeader(OptionsFrame, "General Settings", -38)
 
 local cbLock = CreateUICheckbox(OptionsFrame, "Lock Frame Positions",
     function() return PetThingsDB.locked end,
@@ -791,7 +833,7 @@ local cbLock = CreateUICheckbox(OptionsFrame, "Lock Frame Positions",
         PetThings:UpdateLockState()
     end
 )
-cbLock:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -62)
+cbLock:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -58)
 table.insert(uiWidgets, cbLock)
 
 local cbTest = CreateUICheckbox(OptionsFrame, "Test Mode (Show dummy preview)",
@@ -801,7 +843,7 @@ local cbTest = CreateUICheckbox(OptionsFrame, "Test Mode (Show dummy preview)",
         PetThings:RefreshAll()
     end
 )
-cbTest:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 210, -62)
+cbTest:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 220, -58)
 table.insert(uiWidgets, cbTest)
 
 local cbMinimap = CreateUICheckbox(OptionsFrame, "Show Minimap Button",
@@ -811,31 +853,51 @@ local cbMinimap = CreateUICheckbox(OptionsFrame, "Show Minimap Button",
         UpdateMinimapButtonPosition()
     end
 )
-cbMinimap:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -90)
+cbMinimap:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -84)
 table.insert(uiWidgets, cbMinimap)
 
 -- 2. Buffs Section
-CreateSectionHeader(OptionsFrame, "Pet Buffs Frame", -122)
+CreateSectionHeader(OptionsFrame, "Pet Buffs Frame", -114)
 
-local cbBuffs = CreateUICheckbox(OptionsFrame, "Enable Buffs Display",
+local cbBuffs = CreateUICheckbox(OptionsFrame, "Enable Buffs",
     function() return PetThingsDB.buffs.enabled end,
     function(val)
         PetThingsDB.buffs.enabled = val
         BuffContainer:Refresh()
     end
 )
-cbBuffs:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -144)
+cbBuffs:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -134)
 table.insert(uiWidgets, cbBuffs)
 
-local cbBuffTimer = CreateUICheckbox(OptionsFrame, "Show Durations",
+local cbBuffTimer = CreateUICheckbox(OptionsFrame, "Show Text Duration",
     function() return PetThingsDB.buffs.showDuration end,
     function(val)
         PetThingsDB.buffs.showDuration = val
         BuffContainer:Refresh()
     end
 )
-cbBuffTimer:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 210, -144)
+cbBuffTimer:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 220, -134)
 table.insert(uiWidgets, cbBuffTimer)
+
+local cbBuffClock = CreateUICheckbox(OptionsFrame, "Show Cooldown Clock",
+    function() return PetThingsDB.buffs.showCooldownSpiral end,
+    function(val)
+        PetThingsDB.buffs.showCooldownSpiral = val
+        BuffContainer:Refresh()
+    end
+)
+cbBuffClock:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -158)
+table.insert(uiWidgets, cbBuffClock)
+
+local cbBuffCDNum = CreateUICheckbox(OptionsFrame, "Show Cooldown Numbers",
+    function() return PetThingsDB.buffs.showCooldownNumbers end,
+    function(val)
+        PetThingsDB.buffs.showCooldownNumbers = val
+        BuffContainer:Refresh()
+    end
+)
+cbBuffCDNum:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 220, -158)
+table.insert(uiWidgets, cbBuffCDNum)
 
 local slBuffSize = CreateUISlider(OptionsFrame, "Buff Icon Size", 16, 64, 1,
     function() return PetThingsDB.buffs.iconSize end,
@@ -844,7 +906,7 @@ local slBuffSize = CreateUISlider(OptionsFrame, "Buff Icon Size", 16, 64, 1,
         BuffContainer:Refresh()
     end
 )
-slBuffSize:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -190)
+slBuffSize:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -200)
 table.insert(uiWidgets, slBuffSize)
 
 local slBuffSpacing = CreateUISlider(OptionsFrame, "Buff Spacing", 0, 20, 1,
@@ -854,7 +916,7 @@ local slBuffSpacing = CreateUISlider(OptionsFrame, "Buff Spacing", 0, 20, 1,
         BuffContainer:Refresh()
     end
 )
-slBuffSpacing:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 215, -190)
+slBuffSpacing:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 225, -200)
 table.insert(uiWidgets, slBuffSpacing)
 
 local slBuffPerRow = CreateUISlider(OptionsFrame, "Buffs Per Row", 1, 16, 1,
@@ -864,31 +926,51 @@ local slBuffPerRow = CreateUISlider(OptionsFrame, "Buffs Per Row", 1, 16, 1,
         BuffContainer:Refresh()
     end
 )
-slBuffPerRow:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -235)
+slBuffPerRow:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -242)
 table.insert(uiWidgets, slBuffPerRow)
 
 -- 3. Debuffs Section
-CreateSectionHeader(OptionsFrame, "Pet Debuffs Frame", -270)
+CreateSectionHeader(OptionsFrame, "Pet Debuffs Frame", -275)
 
-local cbDebuffs = CreateUICheckbox(OptionsFrame, "Enable Debuffs Display",
+local cbDebuffs = CreateUICheckbox(OptionsFrame, "Enable Debuffs",
     function() return PetThingsDB.debuffs.enabled end,
     function(val)
         PetThingsDB.debuffs.enabled = val
         DebuffContainer:Refresh()
     end
 )
-cbDebuffs:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -292)
+cbDebuffs:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -295)
 table.insert(uiWidgets, cbDebuffs)
 
-local cbDebuffTimer = CreateUICheckbox(OptionsFrame, "Show Durations",
+local cbDebuffTimer = CreateUICheckbox(OptionsFrame, "Show Text Duration",
     function() return PetThingsDB.debuffs.showDuration end,
     function(val)
         PetThingsDB.debuffs.showDuration = val
         DebuffContainer:Refresh()
     end
 )
-cbDebuffTimer:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 210, -292)
+cbDebuffTimer:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 220, -295)
 table.insert(uiWidgets, cbDebuffTimer)
+
+local cbDebuffClock = CreateUICheckbox(OptionsFrame, "Show Cooldown Clock",
+    function() return PetThingsDB.debuffs.showCooldownSpiral end,
+    function(val)
+        PetThingsDB.debuffs.showCooldownSpiral = val
+        DebuffContainer:Refresh()
+    end
+)
+cbDebuffClock:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -319)
+table.insert(uiWidgets, cbDebuffClock)
+
+local cbDebuffCDNum = CreateUICheckbox(OptionsFrame, "Show Cooldown Numbers",
+    function() return PetThingsDB.debuffs.showCooldownNumbers end,
+    function(val)
+        PetThingsDB.debuffs.showCooldownNumbers = val
+        DebuffContainer:Refresh()
+    end
+)
+cbDebuffCDNum:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 220, -319)
+table.insert(uiWidgets, cbDebuffCDNum)
 
 local slDebuffSize = CreateUISlider(OptionsFrame, "Debuff Icon Size", 16, 64, 1,
     function() return PetThingsDB.debuffs.iconSize end,
@@ -897,7 +979,7 @@ local slDebuffSize = CreateUISlider(OptionsFrame, "Debuff Icon Size", 16, 64, 1,
         DebuffContainer:Refresh()
     end
 )
-slDebuffSize:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -338)
+slDebuffSize:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -361)
 table.insert(uiWidgets, slDebuffSize)
 
 local slDebuffSpacing = CreateUISlider(OptionsFrame, "Debuff Spacing", 0, 20, 1,
@@ -907,7 +989,7 @@ local slDebuffSpacing = CreateUISlider(OptionsFrame, "Debuff Spacing", 0, 20, 1,
         DebuffContainer:Refresh()
     end
 )
-slDebuffSpacing:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 215, -338)
+slDebuffSpacing:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 225, -361)
 table.insert(uiWidgets, slDebuffSpacing)
 
 local slDebuffPerRow = CreateUISlider(OptionsFrame, "Debuffs Per Row", 1, 16, 1,
@@ -917,11 +999,11 @@ local slDebuffPerRow = CreateUISlider(OptionsFrame, "Debuffs Per Row", 1, 16, 1,
         DebuffContainer:Refresh()
     end
 )
-slDebuffPerRow:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -383)
+slDebuffPerRow:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -403)
 table.insert(uiWidgets, slDebuffPerRow)
 
 -- 4. Happiness & Feed Reminder Section
-CreateSectionHeader(OptionsFrame, "Feed Reminder & Happiness Alert", -418)
+CreateSectionHeader(OptionsFrame, "Feed Reminder & Happiness Alert", -436)
 
 local cbFeedEnable = CreateUICheckbox(OptionsFrame, "Enable Feed Alert",
     function() return PetThingsDB.feedReminder.enabled end,
@@ -930,28 +1012,18 @@ local cbFeedEnable = CreateUICheckbox(OptionsFrame, "Enable Feed Alert",
         FeedReminderFrame:CheckHappiness()
     end
 )
-cbFeedEnable:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -440)
+cbFeedEnable:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -456)
 table.insert(uiWidgets, cbFeedEnable)
 
-local cbFeedContent = CreateUICheckbox(OptionsFrame, "Warn on Content",
+local cbFeedContent = CreateUICheckbox(OptionsFrame, "Warn on Content (2)",
     function() return PetThingsDB.feedReminder.remindAtContent end,
     function(val)
         PetThingsDB.feedReminder.remindAtContent = val
         FeedReminderFrame:CheckHappiness()
     end
 )
-cbFeedContent:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 210, -440)
+cbFeedContent:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 220, -456)
 table.insert(uiWidgets, cbFeedContent)
-
-local slFeedSize = CreateUISlider(OptionsFrame, "Alert Icon Size", 24, 96, 2,
-    function() return PetThingsDB.feedReminder.size end,
-    function(val)
-        PetThingsDB.feedReminder.size = val
-        FeedReminderFrame:UpdateSize()
-    end
-)
-slFeedSize:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -485)
-table.insert(uiWidgets, slFeedSize)
 
 local cbFeedSound = CreateUICheckbox(OptionsFrame, "Play Sound Alert",
     function() return PetThingsDB.feedReminder.playSound end,
@@ -959,7 +1031,7 @@ local cbFeedSound = CreateUICheckbox(OptionsFrame, "Play Sound Alert",
         PetThingsDB.feedReminder.playSound = val
     end
 )
-cbFeedSound:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 210, -475)
+cbFeedSound:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -480)
 table.insert(uiWidgets, cbFeedSound)
 
 local cbFeedText = CreateUICheckbox(OptionsFrame, "Show Status Text",
@@ -969,12 +1041,22 @@ local cbFeedText = CreateUICheckbox(OptionsFrame, "Show Status Text",
         FeedReminderFrame:CheckHappiness()
     end
 )
-cbFeedText:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 210, -500)
+cbFeedText:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 220, -480)
 table.insert(uiWidgets, cbFeedText)
+
+local slFeedSize = CreateUISlider(OptionsFrame, "Alert Icon Size", 24, 96, 2,
+    function() return PetThingsDB.feedReminder.size end,
+    function(val)
+        PetThingsDB.feedReminder.size = val
+        FeedReminderFrame:UpdateSize()
+    end
+)
+slFeedSize:SetPoint("TOPLEFT", OptionsFrame, "TOPLEFT", 20, -522)
+table.insert(uiWidgets, slFeedSize)
 
 -- Bottom Reset Buttons
 local btnResetPos = CreateFrame("Button", nil, OptionsFrame, "UIPanelButtonTemplate")
-btnResetPos:SetSize(120, 24)
+btnResetPos:SetSize(130, 24)
 btnResetPos:SetPoint("BOTTOMLEFT", OptionsFrame, "BOTTOMLEFT", 20, 14)
 btnResetPos:SetText("Reset Positions")
 btnResetPos:SetScript("OnClick", function()
@@ -995,7 +1077,7 @@ btnResetPos:SetScript("OnClick", function()
 end)
 
 local btnResetAll = CreateFrame("Button", nil, OptionsFrame, "UIPanelButtonTemplate")
-btnResetAll:SetSize(120, 24)
+btnResetAll:SetSize(130, 24)
 btnResetAll:SetPoint("BOTTOMRIGHT", OptionsFrame, "BOTTOMRIGHT", -20, 14)
 btnResetAll:SetText("Reset All Settings")
 btnResetAll:SetScript("OnClick", function()

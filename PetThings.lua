@@ -120,39 +120,57 @@ end
 local function GetPetAura(index, filter)
     -- Modern C_UnitAuras API
     if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
-        local aura = C_UnitAuras.GetAuraDataByIndex("pet", index, filter)
-        if aura then
-            return aura.name, aura.icon, aura.applications, aura.dispelName, aura.duration, aura.expirationTime, aura.auraInstanceID
+        local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, "pet", index, filter)
+        if not ok then
+            return nil, nil, nil, nil, nil, nil, nil, true
+        end
+        if aura and type(aura) == "table" then
+            return aura.name, aura.icon, aura.applications, aura.dispelName, aura.duration, aura.expirationTime, aura.auraInstanceID, false
         end
     end
     if filter == "HARMFUL" and C_UnitAuras and C_UnitAuras.GetDebuffDataByIndex then
-        local aura = C_UnitAuras.GetDebuffDataByIndex("pet", index)
-        if aura then
-            return aura.name, aura.icon, aura.applications, aura.dispelName, aura.duration, aura.expirationTime, aura.auraInstanceID
+        local ok, aura = pcall(C_UnitAuras.GetDebuffDataByIndex, "pet", index)
+        if not ok then
+            return nil, nil, nil, nil, nil, nil, nil, true
+        end
+        if aura and type(aura) == "table" then
+            return aura.name, aura.icon, aura.applications, aura.dispelName, aura.duration, aura.expirationTime, aura.auraInstanceID, false
         end
     elseif filter == "HELPFUL" and C_UnitAuras and C_UnitAuras.GetBuffDataByIndex then
-        local aura = C_UnitAuras.GetBuffDataByIndex("pet", index)
-        if aura then
-            return aura.name, aura.icon, aura.applications, aura.dispelName, aura.duration, aura.expirationTime, aura.auraInstanceID
+        local ok, aura = pcall(C_UnitAuras.GetBuffDataByIndex, "pet", index)
+        if not ok then
+            return nil, nil, nil, nil, nil, nil, nil, true
+        end
+        if aura and type(aura) == "table" then
+            return aura.name, aura.icon, aura.applications, aura.dispelName, aura.duration, aura.expirationTime, aura.auraInstanceID, false
         end
     end
 
     -- Classic UnitAura / UnitBuff / UnitDebuff API
     if UnitAura then
-        local name, icon, count, debuffType, duration, expirationTime = UnitAura("pet", index, filter)
+        local ok, name, icon, count, debuffType, duration, expirationTime = pcall(UnitAura, "pet", index, filter)
+        if not ok then
+            return nil, nil, nil, nil, nil, nil, nil, true
+        end
         if name then
-            return name, icon, count, debuffType, duration, expirationTime, index
+            return name, icon, count, debuffType, duration, expirationTime, index, false
         end
     end
     if filter == "HELPFUL" and UnitBuff then
-        local name, icon, count, debuffType, duration, expirationTime = UnitBuff("pet", index)
+        local ok, name, icon, count, debuffType, duration, expirationTime = pcall(UnitBuff, "pet", index)
+        if not ok then
+            return nil, nil, nil, nil, nil, nil, nil, true
+        end
         if name then
-            return name, icon, count, debuffType, duration, expirationTime, index
+            return name, icon, count, debuffType, duration, expirationTime, index, false
         end
     elseif filter == "HARMFUL" and UnitDebuff then
-        local name, icon, count, debuffType, duration, expirationTime = UnitDebuff("pet", index)
+        local ok, name, icon, count, debuffType, duration, expirationTime = pcall(UnitDebuff, "pet", index)
+        if not ok then
+            return nil, nil, nil, nil, nil, nil, nil, true
+        end
         if name then
-            return name, icon, count, debuffType, duration, expirationTime, index
+            return name, icon, count, debuffType, duration, expirationTime, index, false
         end
     end
 
@@ -280,13 +298,13 @@ local function CreateAuraContainer(anchor, filter, dbKey)
                 return
             end
             if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex and self.auraInstanceID and GameTooltip.SetUnitAuraByAuraInstanceID then
-                GameTooltip:SetUnitAuraByAuraInstanceID("pet", self.auraInstanceID)
+                pcall(GameTooltip.SetUnitAuraByAuraInstanceID, GameTooltip, "pet", self.auraInstanceID)
             elseif filter == "HELPFUL" and GameTooltip.SetUnitBuff then
-                GameTooltip:SetUnitBuff("pet", self.auraIndex)
+                pcall(GameTooltip.SetUnitBuff, GameTooltip, "pet", self.auraIndex)
             elseif filter == "HARMFUL" and GameTooltip.SetUnitDebuff then
-                GameTooltip:SetUnitDebuff("pet", self.auraIndex)
+                pcall(GameTooltip.SetUnitDebuff, GameTooltip, "pet", self.auraIndex)
             elseif GameTooltip.SetUnitAura then
-                GameTooltip:SetUnitAura("pet", self.auraIndex, filter)
+                pcall(GameTooltip.SetUnitAura, GameTooltip, "pet", self.auraIndex, filter)
             end
             GameTooltip:Show()
         end)
@@ -411,54 +429,58 @@ local function CreateAuraContainer(anchor, filter, dbKey)
         -- Actual Pet Auras
         local btnIndex = 1
         for i = 1, 40 do
-            local name, icon, count, debuffType, duration, expirationTime, auraInstanceID = GetPetAura(i, self.filter)
-            if not name then break end
-
-            local btn = self:GetButton(btnIndex)
-            btn.isTest = false
-            btn.auraIndex = i
-            btn.auraInstanceID = auraInstanceID
-            btn.icon:SetTexture(icon)
-
-            if cfg.showCount and count and count > 1 then
-                btn.count:SetText(count)
+            local name, icon, count, debuffType, duration, expirationTime, auraInstanceID, isSecret = GetPetAura(i, self.filter)
+            if not name then
+                if not isSecret then
+                    break
+                end
             else
-                btn.count:SetText("")
-            end
+                local btn = self:GetButton(btnIndex)
+                btn.isTest = false
+                btn.auraIndex = i
+                btn.auraInstanceID = auraInstanceID
+                btn.icon:SetTexture(icon)
 
-            if duration and duration > 0 and expirationTime and expirationTime > 0 then
-                if cfg.showCooldownSpiral ~= false then
-                    if btn.cooldown then
-                        btn.cooldown:SetCooldown(expirationTime - duration, duration)
-                        if btn.cooldown.SetHideCountdownNumbers then
-                            btn.cooldown:SetHideCountdownNumbers(not cfg.showCooldownNumbers)
+                if cfg.showCount and count and count > 1 then
+                    btn.count:SetText(count)
+                else
+                    btn.count:SetText("")
+                end
+
+                if duration and duration > 0 and expirationTime and expirationTime > 0 then
+                    if cfg.showCooldownSpiral ~= false then
+                        if btn.cooldown then
+                            btn.cooldown:SetCooldown(expirationTime - duration, duration)
+                            if btn.cooldown.SetHideCountdownNumbers then
+                                btn.cooldown:SetHideCountdownNumbers(not cfg.showCooldownNumbers)
+                            end
+                            btn.cooldown.noCooldownCount = not cfg.showCooldownNumbers
+                            btn.cooldown:Show()
                         end
-                        btn.cooldown.noCooldownCount = not cfg.showCooldownNumbers
-                        btn.cooldown:Show()
+                    else
+                        if btn.cooldown then btn.cooldown:Hide() end
                     end
+                    btn.expirationTime = expirationTime
                 else
                     if btn.cooldown then btn.cooldown:Hide() end
+                    btn.expirationTime = nil
                 end
-                btn.expirationTime = expirationTime
-            else
-                if btn.cooldown then btn.cooldown:Hide() end
-                btn.expirationTime = nil
-            end
 
-            if not cfg.showDuration then
-                btn.duration:SetText("")
-            end
+                if not cfg.showDuration then
+                    btn.duration:SetText("")
+                end
 
-            if self.filter == "HARMFUL" then
-                local color = DEBUFF_COLORS[debuffType or "none"] or DEBUFF_COLORS["none"]
-                btn.border:SetVertexColor(color.r, color.g, color.b)
-                btn.border:Show()
-            else
-                btn.border:Hide()
-            end
+                if self.filter == "HARMFUL" then
+                    local color = DEBUFF_COLORS[debuffType or "none"] or DEBUFF_COLORS["none"]
+                    btn.border:SetVertexColor(color.r, color.g, color.b)
+                    btn.border:Show()
+                else
+                    btn.border:Hide()
+                end
 
-            btn:Show()
-            btnIndex = btnIndex + 1
+                btn:Show()
+                btnIndex = btnIndex + 1
+            end
         end
 
         for i = btnIndex, #self.buttons do
@@ -532,10 +554,19 @@ local lastHappinessAlert = nil
 function FeedReminderFrame:UpdateSize()
     local size = PetThingsDB.feedReminder.size or 48
     FeedAnchor:SetSize(size, size)
+    if InCombatLockdown and InCombatLockdown() then
+        self.pendingSize = true
+        return
+    end
     FeedReminderFrame:SetSize(size, size)
 end
 
 function FeedReminderFrame:CheckHappiness()
+    if InCombatLockdown and InCombatLockdown() then
+        self.pendingCheck = true
+        return
+    end
+
     local cfg = PetThingsDB.feedReminder
     if not cfg.enabled then
         self:Hide()
@@ -1133,6 +1164,7 @@ end
 
 PetThings:RegisterEvent("ADDON_LOADED")
 PetThings:RegisterEvent("PLAYER_ENTERING_WORLD")
+PetThings:RegisterEvent("PLAYER_REGEN_ENABLED")
 PetThings:RegisterEvent("UNIT_PET")
 PetThings:RegisterEvent("PET_UI_UPDATE")
 PetThings:RegisterEvent("UNIT_AURA")
@@ -1147,6 +1179,15 @@ PetThings:SetScript("OnEvent", function(self, event, arg1, ...)
     elseif event == "PLAYER_ENTERING_WORLD" then
         self:RestoreAllPositions()
         self:RefreshAll()
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        if FeedReminderFrame.pendingSize then
+            FeedReminderFrame.pendingSize = nil
+            FeedReminderFrame:UpdateSize()
+        end
+        if FeedReminderFrame.pendingCheck then
+            FeedReminderFrame.pendingCheck = nil
+            FeedReminderFrame:CheckHappiness()
+        end
     elseif event == "UNIT_AURA" then
         if arg1 == "pet" then
             BuffContainer:Refresh()
